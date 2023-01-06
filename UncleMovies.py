@@ -167,20 +167,20 @@ async def list(ctx):
     if result:
         await ctx.send(result)
         
-# Define the /help command using the command decorator
+# # Define the /help command using the command decorator
 
 
-@bot.command()
-async def help(ctx):
-    message = """
-    List of available commands:
-    /add [movie_details] - adds a movie to the logger
-    /delete [movie_details] - deletes a movie from the logger
-    /list - lists all movies in the logger
-    /search [query] - searches for movies in the logger
-    /help - lists all available commands
-    """
-    await ctx.send(message)
+# @bot.command()
+# async def help(ctx):
+#     message = """
+#     List of available commands:
+#     /add [movie_details] - adds a movie to the logger
+#     /delete [movie_details] - deletes a movie from the logger
+#     /list - lists all movies in the logger
+#     /search [query] - searches for movies in the logger
+#     /help - lists all available commands
+#     """
+#     await ctx.send(message)
 
 
 # Handle command errors using the on_command_error event
@@ -190,5 +190,5 @@ async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
         await ctx.send("Invalid command")
 
-# Run the bot using the API key
-bot.run(os.getenv("API_KEY"))
+# Run the bot using the bot token
+bot.run(os.getenv("DISCORD_BOT_TOKEN"))
