@@ -24,7 +24,6 @@ bot = interactions.Client(token=os.getenv("DISCORD_BOT_TOKEN"))
 
 # This function is used to get the list of movies from the logger (by reading from the movie-log.txt file)
 
-
 def get_movie_list():
     movie_list = []
     try:
@@ -37,7 +36,6 @@ def get_movie_list():
         return "\n".join(movie_list)
 
 # This function is used to search for movies in the logger (by searching the movie-log.txt file)
-
 
 def search_movies(query):
     search_results = []
@@ -70,7 +68,6 @@ def add_movie(movie_details):
 
 # This function is used to delete a movie from the logger (by overwriting the movie-log.txt file)
 
-
 def delete_movie(movie_details):
     movie_list = get_movie_list()
     if movie_details not in movie_list:
@@ -84,7 +81,6 @@ def delete_movie(movie_details):
         return "movie-log.txt file not found"
 
 # This function is used to handle errors
-
 
 def handle_error(error):
     try:
