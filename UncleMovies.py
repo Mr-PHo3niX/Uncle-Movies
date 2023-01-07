@@ -1,6 +1,7 @@
 import openai
 import discord
 import os
+import asyncio
 import interactions
 from dotenv import load_dotenv
 
@@ -19,7 +20,10 @@ else:
     print("Connected to OpenAI API key...")
     
 # Create a bot object using the interactions library
-bot = interactions.Client(token=os.getenv("DISCORD_BOT_TOKEN"))
+bot = interactions.Client(
+    token=os.getenv("DISCORD_BOT_TOKEN"),
+    activity=discord.Activity(type=discord.ActivityType.watching, name="a Movie")
+    )
 
 
 # This function is used to get the list of movies from the logger (by reading from the movie-log.txt file)
@@ -34,6 +38,7 @@ def get_movie_list():
         return "movie-log.txt file not found"
     else:
         return "\n".join(movie_list)
+    
 
 # This function is used to search for movies in the logger (by searching the movie-log.txt file)
 
@@ -97,17 +102,14 @@ debug_channel = int(os.getenv("DEBUG_CHANNEL"))
 @bot.event
 async def on_ready():
     print("Bot is up and running...")
-    # Set the bot's status
-    await bot.change_presence(activity=discord.Game(name="/help for commands"))
-    # Send a message to the server
-    await bot.get_channel(debug_channel).send("Slash commands are ready to use")
+    print("Bot is ready to use!")
 
 # Define the /add command using the command decorator
 
 @bot.command(
     name="add",
     description="Adds a movie to the movie log",
-    scope=interactions.GuildScope(guild_id=debug_guild),
+    scope=debug_guild,
 )
 
 async def add(ctx: interactions.CommandContext, *, movie_details: str):
@@ -133,7 +135,7 @@ async def add(ctx: interactions.CommandContext, *, movie_details: str):
 @bot.command(
     name="delete",
     description="Deletes a movie from the movie log",
-    scope=interactions.GuildScope(guild_id=debug_guild),
+    scope=debug_guild,
 )
 
 async def delete(ctx: interactions.CommandContext, *, movie_details: str):
@@ -159,7 +161,7 @@ async def delete(ctx: interactions.CommandContext, *, movie_details: str):
 @bot.command(
     name="search",
     description="Searches for movies in the movie log",
-    scope=interactions.GuildScope(guild_id=debug_guild),
+    scope=debug_guild,
 )
 
 async def search(ctx: interactions.CommandContext, *, query: str):
@@ -173,7 +175,7 @@ async def search(ctx: interactions.CommandContext, *, query: str):
 @bot.command(
     name="list",
     description="Lists all movies in the movie log",
-    scope=interactions.GuildScope(guild_id=debug_guild),
+    scope=debug_guild,
 )
 async def list(ctx: interactions.CommandContext):
     # Get the list of movies from the logger
@@ -184,10 +186,11 @@ async def list(ctx: interactions.CommandContext):
 
 # Handle command errors using the on_command_error event
 @bot.event
-async def on_command_error(ctx, error):
+async def command_error(ctx, error):
     # Send an error message if a CommandNotFound error occurred
-    if isinstance(error, interactions.errors.CommandNotFound):
+    if isinstance(error, interactions.CommandNotFound):
         await ctx.send("Command not found")
+
 
 # Run the bot
 bot.start()
