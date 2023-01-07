@@ -112,7 +112,7 @@ async def on_ready():
     scope=debug_guild,
 )
 
-async def add(ctx: interactions.CommandContext, *, movie_details: str):
+async def add(ctx: interactions.CommandContext, movie_details: str):
     # Use the Davinci-003 model to parse the natural language input and extract the movie details
     try:
         response = openai.Completion.create(
@@ -138,7 +138,7 @@ async def add(ctx: interactions.CommandContext, *, movie_details: str):
     scope=debug_guild,
 )
 
-async def delete(ctx: interactions.CommandContext, *, movie_details: str):
+async def delete(ctx: interactions.CommandContext, movie_details: str):
     # Use the Davinci-003 model to parse the natural language input and extract the movie details
     try:
         response = openai.Completion.create(
@@ -164,7 +164,7 @@ async def delete(ctx: interactions.CommandContext, *, movie_details: str):
     scope=debug_guild,
 )
 
-async def search(ctx: interactions.CommandContext, *, query: str):
+async def search(ctx: interactions.CommandContext, query: str):
     # Search for movies in the logger
     result = search_movies(query)
     if result:
