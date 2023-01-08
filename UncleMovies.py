@@ -302,20 +302,14 @@ async def on_ready():
 @bot.slash_command(name="help")
 async def help(ctx):
     await ctx.send(
-        "List of available commands:\n"
-        ">help - Shows this message\n"
-        ">movies - Shows the list of movies in the logger\n"
-        ">search <query> - Searches for movies in the logger based on the given query\n"
-        ">add <movie_details> - Adds a movie to the logger\n"
-        ">delete <movie_name> - Deletes a movie from the logger\n"
-        ">update <movie_name> <new_movie_name> <new_year> <new_director> <new_description> <new_genre> - Updates the movie details of the movie with the given name in the logger. Any field that you do not want to update can be left blank. \nExample: >update 'The Shawshank Redemption' 'The Shawshank Redemption' 1994 'Frank Darabont' 'Two imprisoned men bond over a number of years, finding solace and eventual redemption through acts of common decency.' 'Comedy' "
-    )
+        "```List of available commands:\n>help - Shows this message\n>movies - Shows the list of movies in the logger\n>search <query> [search_by] - Searches for movies in the logger based on the given query and search criteria. The search criteria can be 'title', 'year', 'director', 'description', or 'genre'. If no search criteria is provided, the default is 'title'.\n>add <movie_name> - Adds a movie to the logger\n>delete <movie_name> - Deletes a movie from the logger\n>update <movie_name> <new_movie_name> <new_year> <new_director> <new_description> <new_genre> - Updates the movie details of the movie with the given name in the logger. Any field that you do not want to update can be left blank. \nExample: >update 'The Shawshank Redemption' 'The Shawshank Redemption' 1994 'Frank Darabont' 'Two imprisoned men bond over a number of years, finding solace and eventual redemption through acts of common decency.' 'Comedy'\n>sort <criteria> - Sorts the list of movies in the logger based on the given criteria. The criteria can be 'title', 'year', 'director', 'description', or 'genre'.\n```"
+)
 
 
 # Define the >movies command
 
 
-@bot.slash_command(name="movies")
+@bot.command()
 async def movies(ctx):
     try:
         movie_list = get_movie_list()
@@ -327,7 +321,7 @@ async def movies(ctx):
 # Define the >search command
 
 
-@bot.slash_command(name="search")
+@bot.command()
 async def search(ctx, *, query):
     try:
         search_results = search_movies(query)
@@ -342,7 +336,7 @@ async def search(ctx, *, query):
 # Define the >add command
 
 
-@bot.slash_command(name="add")
+@bot.command()
 async def add(ctx, *, movie_details):
     if not movie_details:
         await ctx.send("No movie details provided")
@@ -357,7 +351,7 @@ async def add(ctx, *, movie_details):
 # Define the >delete command
 
 
-@bot.slash_command(name="delete")
+@bot.command()
 async def delete(ctx, *, movie_details):
     if not movie_details:
         await ctx.send("No movie details provided")
@@ -375,7 +369,7 @@ async def delete(ctx, *, movie_details):
 # Define the >update command
 
 
-@bot.slash_command()
+@bot.command()
 async def update(ctx, movie_name: str, *, update_str: str):
     try:
         # Parse the update string to get the new movie details
@@ -400,11 +394,11 @@ async def update(ctx, movie_name: str, *, update_str: str):
 # Define the >sort command
 
 
-@bot.slash_command()
+@bot.command()
 async def sort(ctx, sort_by: str):
     # Validate the sort criteria
-    if sort_by not in ["title", "year", "director"]:
-        await ctx.send("Invalid sort criteria. Please choose from 'title', 'year', or 'director'.")
+    if sort_by not in ["title", "year", "director", "genre"]:
+        await ctx.send("Invalid sort criteria. Please choose from 'title', 'year', 'director' or 'genre'")
         return
 
     # Call the sort_movies function
@@ -423,9 +417,12 @@ async def sort(ctx, sort_by: str):
 # Handle command errors using the on_command_error event
 @bot.event
 async def on_command_error(ctx, error):
-    # Send an error message if a CommandNotFound error occurred
+    # Ignore the CommandNotFound error
     if isinstance(error, commands.CommandNotFound):
-        await ctx.send("Invalid command")
+        return
+
+    # Handle other errors
+    await ctx.send(handle_error(error))
 
 # Run the using the bot token
 bot.run(os.getenv("DISCORD_BOT_TOKEN"))
