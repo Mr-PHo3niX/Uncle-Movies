@@ -2,6 +2,7 @@ import re
 import openai
 import discord
 import os
+from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 import asyncio
@@ -98,7 +99,7 @@ def add_movie(movie_name):
     prompt = f"Information about the movie {movie_name}"
 
     # Set the model to use for completion
-    model = "text-davinci-002"
+    model = "text-davinci-003"
 
     # Set the number of completions to generate
     num_completions = 1
@@ -109,7 +110,7 @@ def add_movie(movie_name):
     try:
         # Generate completions
         completions = openai.Completion.create(
-            engine=model, prompt=prompt, max_tokens=1024, n=num_completions, temperature=temperature)
+            engine=model, prompt=prompt, max_tokens=2048, n=num_completions, temperature=temperature)
     except openai.api_error.ApiError as e:
         # Code to handle any errors that might occur when using the OpenAI API
         return "An error occurred when calling the OpenAI API: {}".format(e)
@@ -161,7 +162,7 @@ def delete_movie(movie_name):
     prompt = f"Information about movies in the logger except the movie {movie_name}"
 
     # Set the model to use for completion
-    model = "text-davinci-002"
+    model = "text-davinci-003"
 
     # Set the number of completions to generate
     num_completions = 1
@@ -172,7 +173,7 @@ def delete_movie(movie_name):
     try:
         # Generate completions
         completions = openai.Completion.create(
-            engine=model, prompt=prompt, max_tokens=1024, n=num_completions, temperature=temperature)
+            engine=model, prompt=prompt, max_tokens=2048, n=num_completions, temperature=temperature)
     except openai.api_error.ApiError as e:
         # Code to handle any errors that might occur when using the OpenAI API
         return "An error occurred when calling the OpenAI API: {}".format(e)
@@ -299,7 +300,7 @@ async def on_ready():
 # Define the >help command
 
 
-@bot.slash_command(name="help")
+@bot.app_commands(name="help")
 async def help(ctx):
     await ctx.send(
         "```List of available commands:\n>help - Shows this message\n>movies - Shows the list of movies in the logger\n>search <query> [search_by] - Searches for movies in the logger based on the given query and search criteria. The search criteria can be 'title', 'year', 'director', 'description', or 'genre'. If no search criteria is provided, the default is 'title'.\n>add <movie_name> - Adds a movie to the logger\n>delete <movie_name> - Deletes a movie from the logger\n>update <movie_name> <new_movie_name> <new_year> <new_director> <new_description> <new_genre> - Updates the movie details of the movie with the given name in the logger. Any field that you do not want to update can be left blank. \nExample: >update 'The Shawshank Redemption' 'The Shawshank Redemption' 1994 'Frank Darabont' 'Two imprisoned men bond over a number of years, finding solace and eventual redemption through acts of common decency.' 'Comedy'\n>sort <criteria> - Sorts the list of movies in the logger based on the given criteria. The criteria can be 'title', 'year', 'director', 'description', or 'genre'.\n```"
@@ -309,7 +310,7 @@ async def help(ctx):
 # Define the >movies command
 
 
-@bot.command()
+@app_commands.command(name="movies")
 async def movies(ctx):
     try:
         movie_list = get_movie_list()
@@ -321,7 +322,7 @@ async def movies(ctx):
 # Define the >search command
 
 
-@bot.command()
+@app_commands.command(name="search")
 async def search(ctx, *, query):
     try:
         search_results = search_movies(query)
@@ -336,7 +337,7 @@ async def search(ctx, *, query):
 # Define the >add command
 
 
-@bot.command()
+@app_commands.command(name="add")
 async def add(ctx, *, movie_details):
     if not movie_details:
         await ctx.send("No movie details provided")
@@ -351,7 +352,7 @@ async def add(ctx, *, movie_details):
 # Define the >delete command
 
 
-@bot.command()
+@app_commands.command(name="delete")
 async def delete(ctx, *, movie_details):
     if not movie_details:
         await ctx.send("No movie details provided")
@@ -369,7 +370,7 @@ async def delete(ctx, *, movie_details):
 # Define the >update command
 
 
-@bot.command()
+@app_commands.command(name="update")
 async def update(ctx, movie_name: str, *, update_str: str):
     try:
         # Parse the update string to get the new movie details
@@ -394,7 +395,7 @@ async def update(ctx, movie_name: str, *, update_str: str):
 # Define the >sort command
 
 
-@bot.command()
+@app_commands.command(name="sort")
 async def sort(ctx, sort_by: str):
     # Validate the sort criteria
     if sort_by not in ["title", "year", "director", "genre"]:
@@ -417,12 +418,20 @@ async def sort(ctx, sort_by: str):
 # Handle command errors using the on_command_error event
 @bot.event
 async def on_command_error(ctx, error):
-    # Ignore the CommandNotFound error
-    if isinstance(error, commands.CommandNotFound):
+    # If the command has local error handler, return
+    if hasattr(ctx.command, "on_error"):
         return
 
-    # Handle other errors
-    await ctx.send(handle_error(error))
+    # Get the original error
+    error = getattr(error, "original", error)
+
+    # Ignore the following errors
+    ignored = (commands.CommandNotFound, commands.UserInputError)
+    if isinstance(error, ignored):
+        return
+
+    # Log the error
+    print(f"Error in command '{ctx.command}': {error}")
 
 # Run the using the bot token
 bot.run(os.getenv("DISCORD_BOT_TOKEN"))
