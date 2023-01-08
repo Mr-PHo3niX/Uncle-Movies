@@ -41,6 +41,15 @@ def get_movie_list():
 
 def search_movies(query, search_by="title"):
     search_results = []
+    if not query:
+        return "The query cannot be an empty string."
+
+    if not search_by:
+        return "The search criteria cannot be an empty string."
+
+    if search_by not in ["title", "year", "director", "description", "genre"]:
+        return "Invalid search criteria. Please choose from 'title', 'year', 'director', 'description', or 'genre'."
+    
     try:
         with open("movie-log.txt", "r") as movie_log_file:
             for line in movie_log_file:
@@ -61,6 +70,10 @@ def search_movies(query, search_by="title"):
                     movie_description = line.split("\n")[3].split(": ")[1]
                     if query.lower() in movie_description.lower():
                         search_results.append(line.strip())
+                elif search_by == "genre":
+                    movie_genre = line.split("\n")[4].split(": ")[1]
+                    if query.lower() in movie_genre.lower():
+                        search_results.append(line.strip())
     except FileNotFoundError:
         return "movie-log.txt file not found"
     else:
@@ -72,6 +85,11 @@ def search_movies(query, search_by="title"):
 
 
 def add_movie(movie_name):
+    
+    # Check if the movie name is empty
+    if not movie_name:
+        return "The movie name cannot be an empty string."
+    
     # Check if the movie already exists in the logger
     if movie_name in search_movies(movie_name):
         return
@@ -95,15 +113,21 @@ def add_movie(movie_name):
     except openai.api_error.ApiError as e:
         # Code to handle any errors that might occur when using the OpenAI API
         return "An error occurred when calling the OpenAI API: {}".format(e)
+    except Exception as e:
+        # Code to handle any other exceptions that might occur
+        return "An unexpected error occurred: {}".format(e)
 
     # Get the first completion
     completion = completions.choices[0].text
 
     # Extract the information about the movie from the completion
     # You may need to modify the regular expression depending on the format of the completion
-    import re
-    movie_details = re.search(
-        r"Movie: (.*)\nYear: (\d+)\nDirector: (.*)\nDescription: (.*)\nGenre: (.*)", completion).groups()
+    try:
+        movie_details = re.search(
+            r"Movie: (.*)\nYear: (\d+)\nDirector: (.*)\nDescription: (.*)\nGenre: (.*)", completion).groups()
+    except AttributeError:
+        # Code to handle the AttributeError exception
+        return "Unexpected format for completion returned by the OpenAI API"
 
     # Format the movie details
     movie_details = f"Movie: {movie_details[0]}\nYear: {movie_details[1]}\nDirector: {movie_details[2]}\nDescription: {movie_details[3]}\nGenre: {movie_details[4]}\n"
@@ -123,6 +147,11 @@ def add_movie(movie_name):
 def delete_movie(movie_name):
     # Get the list of movies
     movie_list = get_movie_list()
+    
+    # Check if the movie name is empty
+    if not movie_name:
+        return "The movie name cannot be an empty string."
+    
     # Check if the movie exists in the list
     if movie_name  not in movie_list:
         return "Movie not found"
@@ -153,12 +182,15 @@ def delete_movie(movie_name):
 
     # Extract the information about the movies from the completion
     # You may need to modify the regular expression depending on the format of the completion
-    movie_details = re.findall(
-        r"Movie: (.*)\nYear: (\d+)\nDirector: (.*)\nDescription: (.*)\nGenre: (.*)", completion)
+    try:
+        movie_details = re.findall(
+            r"Movie: (.*)\nYear: (\d+)\nDirector: (.*)\nDescription: (.*)\nGenre: (.*)", completion)
+    except AttributeError:
+        return "Unexpected format for completion returned by the OpenAI API"
 
     # Create a new list of movies that includes all movies except the one being deleted
     updated_movie_list = [
-        f"Movie: {movie[0]}\nYear: {movie[1]}\nDirector: {movie[2]}\nDescription: {movie[3]}" for movie in movie_details if movie[0] != movie_name]
+        f"Movie: {movie[0]}\nYear: {movie[1]}\nDirector: {movie[2]}\nDescription: {movie[3]}\nGenre: {movie[4]}\n" for movie in movie_details if movie[0] != movie_name]
 
     try:
         # Write the updated movie list to the movie-log.txt file
@@ -170,7 +202,7 @@ def delete_movie(movie_name):
 
 # This function is used to update a movie in the logger (by overwriting the movie-log.txt file)
 
-def update_movie(movie_name, new_movie_name=None, new_year=None, new_director=None, new_description=None):
+def update_movie(movie_name, new_movie_name=None, new_year=None, new_director=None, new_description=None, new_genre=None):
     # Read the movie-log.txt file into a list of lines
     try:
         with open("movie-log.txt", "r") as movie_log_file:
@@ -194,6 +226,8 @@ def update_movie(movie_name, new_movie_name=None, new_year=None, new_director=No
                 movie_details[2] = f"Director: {new_director}"
             if new_description is not None:
                 movie_details[3] = f"Description: {new_description}"
+            if new_genre is not None:
+                movie_details[4] = f"Genre: {new_genre}"
             # Join the movie details back into a single line
             lines[i] = "\n".join(movie_details)
             break
@@ -206,6 +240,36 @@ def update_movie(movie_name, new_movie_name=None, new_year=None, new_director=No
             movie_log_file.writelines(lines)
     except Exception as e:
         return f"An error occurred: {e}"
+    
+
+def sort_movies(sort_by):
+    # Read the movies from the movie-log.txt file and store them in a list
+    movies = []
+    with open("movie-log.txt", "r") as movie_log_file:
+        for line in movie_log_file:
+            movies.append(line.strip())
+
+    # Sort the list of movies based on the specified criteria
+    if sort_by == "title":
+        sorted_movies = sorted(
+            movies, key=lambda movie: movie.split("\n")[0].split(": ")[1])
+    elif sort_by == "year":
+        sorted_movies = sorted(
+            movies, key=lambda movie: movie.split("\n")[1].split(": ")[1])
+    elif sort_by == "director":
+        sorted_movies = sorted(
+            movies, key=lambda movie: movie.split("\n")[2].split(": ")[1])
+    elif sort_by == "description":
+        sorted_movies = sorted(
+            movies, key=lambda movie: movie.split("\n")[3].split(": ")[1])
+    elif sort_by == "genre":
+        sorted_movies = sorted(
+            movies, key=lambda movie: movie.split("\n")[4].split(": ")[1])
+    else:
+        return "Invalid criteria. Specify a valid criteria (title, year, director, description, or genre)"
+
+    return "\n".join(sorted_movies)
+
 
 
 
@@ -235,7 +299,7 @@ async def on_ready():
 # Define the >help command
 
 
-@bot.command(name="help")
+@bot.slash_command(name="help")
 async def help(ctx):
     await ctx.send(
         "List of available commands:\n"
@@ -244,14 +308,14 @@ async def help(ctx):
         ">search <query> - Searches for movies in the logger based on the given query\n"
         ">add <movie_details> - Adds a movie to the logger\n"
         ">delete <movie_name> - Deletes a movie from the logger\n"
-        ">update <movie_name> <new_movie_name> <new_year> <new_director> <new_description> - Updates the movie details of the movie with the given name in the logger. Any field that you do not want to update can be left blank. Example: >update 'The Shawshank Redemption' 'The Shawshank Redemption' 1994 'Frank Darabont' 'Two imprisoned men bond over a number of years, finding solace and eventual redemption through acts of common decency.' "
+        ">update <movie_name> <new_movie_name> <new_year> <new_director> <new_description> <new_genre> - Updates the movie details of the movie with the given name in the logger. Any field that you do not want to update can be left blank. \nExample: >update 'The Shawshank Redemption' 'The Shawshank Redemption' 1994 'Frank Darabont' 'Two imprisoned men bond over a number of years, finding solace and eventual redemption through acts of common decency.' 'Comedy' "
     )
 
 
 # Define the >movies command
 
 
-@bot.command(name="movies")
+@bot.slash_command(name="movies")
 async def movies(ctx):
     try:
         movie_list = get_movie_list()
@@ -263,7 +327,7 @@ async def movies(ctx):
 # Define the >search command
 
 
-@bot.command(name="search")
+@bot.slash_command(name="search")
 async def search(ctx, *, query):
     try:
         search_results = search_movies(query)
@@ -278,7 +342,7 @@ async def search(ctx, *, query):
 # Define the >add command
 
 
-@bot.command(name="add")
+@bot.slash_command(name="add")
 async def add(ctx, *, movie_details):
     if not movie_details:
         await ctx.send("No movie details provided")
@@ -293,7 +357,7 @@ async def add(ctx, *, movie_details):
 # Define the >delete command
 
 
-@bot.command(name="delete")
+@bot.slash_command(name="delete")
 async def delete(ctx, *, movie_details):
     if not movie_details:
         await ctx.send("No movie details provided")
@@ -311,7 +375,7 @@ async def delete(ctx, *, movie_details):
 # Define the >update command
 
 
-@bot.command()
+@bot.slash_command()
 async def update(ctx, movie_name: str, *, update_str: str):
     try:
         # Parse the update string to get the new movie details
@@ -332,6 +396,27 @@ async def update(ctx, movie_name: str, *, update_str: str):
             await ctx.send("Movie not found")
         else:
             await ctx.send("Movie updated successfully")
+            
+# Define the >sort command
+
+
+@bot.slash_command()
+async def sort(ctx, sort_by: str):
+    # Validate the sort criteria
+    if sort_by not in ["title", "year", "director"]:
+        await ctx.send("Invalid sort criteria. Please choose from 'title', 'year', or 'director'.")
+        return
+
+    # Call the sort_movies function
+    try:
+        sorted_movies = sort_movies(sort_by)
+    except Exception as e:
+        await ctx.send("An error occurred while sorting the movies: {}".format(e))
+        return
+
+    # Send the sorted movie list to the channel
+    message = "\n".join(sorted_movies)
+    await ctx.send(message)
 
 
 
