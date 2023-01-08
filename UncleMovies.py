@@ -1,10 +1,10 @@
+import re
 import openai
 import discord
 import os
-import asyncio
-import interactions
+from discord.ext import commands
 from dotenv import load_dotenv
-
+import asyncio
 
 # Load environment variables from .env file
 try:
@@ -18,15 +18,12 @@ if openai.api_key is None:
     print("API key not set. Set the API key using openai.api_key = 'YOUR_API_KEY'")
 else:
     print("Connected to OpenAI API key...")
-    
-# Create a bot object using the interactions library
-bot = interactions.Client(
-    token=os.getenv("DISCORD_BOT_TOKEN"),
-    activity=discord.Activity(type=discord.ActivityType.watching, name="a Movie")
-    )
 
+# Create a bot object using the commands module
+bot = commands.Bot(command_prefix=">", intents=discord.Intents.all())
 
 # This function is used to get the list of movies from the logger (by reading from the movie-log.txt file)
+
 
 def get_movie_list():
     movie_list = []
@@ -38,17 +35,32 @@ def get_movie_list():
         return "movie-log.txt file not found"
     else:
         return "\n".join(movie_list)
-    
 
 # This function is used to search for movies in the logger (by searching the movie-log.txt file)
 
-def search_movies(query):
+
+def search_movies(query, search_by="title"):
     search_results = []
     try:
         with open("movie-log.txt", "r") as movie_log_file:
             for line in movie_log_file:
-                if query.lower() in line.lower():
-                    search_results.append(line.strip())
+                if search_by == "title":
+                    movie_title = line.split("\n")[0].split(": ")[1]
+                    if query.lower() in movie_title.lower():
+                        search_results.append(line.strip())
+                # You can add more elif statements here to search by other criteria (e.g. year, director)
+                elif search_by == "year":
+                    movie_year = line.split("\n")[1].split(": ")[1]
+                    if query.lower() in movie_year.lower():
+                        search_results.append(line.strip())
+                elif search_by == "director":
+                    movie_director = line.split("\n")[2].split(": ")[1]
+                    if query.lower() in movie_director.lower():
+                        search_results.append(line.strip())
+                elif search_by == "description":
+                    movie_description = line.split("\n")[3].split(": ")[1]
+                    if query.lower() in movie_description.lower():
+                        search_results.append(line.strip())
     except FileNotFoundError:
         return "movie-log.txt file not found"
     else:
@@ -59,33 +71,146 @@ def search_movies(query):
 # This function is used to add a movie to the logger (by appending to the movie-log.txt file)
 
 
-def add_movie(movie_details):
-    if not movie_details:
-        return
+def add_movie(movie_name):
     # Check if the movie already exists in the logger
-    if movie_details in search_movies(movie_details):
+    if movie_name in search_movies(movie_name):
         return
+
+    # Set the prompt
+    prompt = f"Information about the movie {movie_name}"
+
+    # Set the model to use for completion
+    model = "text-davinci-002"
+
+    # Set the number of completions to generate
+    num_completions = 1
+
+    # Set the temperature (controls the creativity of the completions)
+    temperature = 0.5
+
     try:
+        # Generate completions
+        completions = openai.Completion.create(
+            engine=model, prompt=prompt, max_tokens=1024, n=num_completions, temperature=temperature)
+    except openai.api_error.ApiError as e:
+        # Code to handle any errors that might occur when using the OpenAI API
+        return "An error occurred when calling the OpenAI API: {}".format(e)
+
+    # Get the first completion
+    completion = completions.choices[0].text
+
+    # Extract the information about the movie from the completion
+    # You may need to modify the regular expression depending on the format of the completion
+    import re
+    movie_details = re.search(
+        r"Movie: (.*)\nYear: (\d+)\nDirector: (.*)\nDescription: (.*)\nGenre: (.*)", completion).groups()
+
+    # Format the movie details
+    movie_details = f"Movie: {movie_details[0]}\nYear: {movie_details[1]}\nDirector: {movie_details[2]}\nDescription: {movie_details[3]}\nGenre: {movie_details[4]}\n"
+
+    try:
+        # Code to write to the movie-log.txt file
         with open("movie-log.txt", "a") as movie_log_file:
             movie_log_file.write(f"{movie_details}\n")
     except FileNotFoundError:
+        # Code to handle the FileNotFoundError exception
         return "movie-log.txt file not found"
+
 
 # This function is used to delete a movie from the logger (by overwriting the movie-log.txt file)
 
-def delete_movie(movie_details):
+
+def delete_movie(movie_name):
+    # Get the list of movies
     movie_list = get_movie_list()
-    if movie_details not in movie_list:
+    # Check if the movie exists in the list
+    if movie_name  not in movie_list:
         return "Movie not found"
+
+
+    # Set the prompt
+    prompt = f"Information about movies in the logger except the movie {movie_name}"
+
+    # Set the model to use for completion
+    model = "text-davinci-002"
+
+    # Set the number of completions to generate
+    num_completions = 1
+
+    # Set the temperature (controls the creativity of the completions)
+    temperature = 0.5
+
     try:
+        # Generate completions
+        completions = openai.Completion.create(
+            engine=model, prompt=prompt, max_tokens=1024, n=num_completions, temperature=temperature)
+    except openai.api_error.ApiError as e:
+        # Code to handle any errors that might occur when using the OpenAI API
+        return "An error occurred when calling the OpenAI API: {}".format(e)
+
+    # Get the first completion
+    completion = completions.choices[0].text
+
+    # Extract the information about the movies from the completion
+    # You may need to modify the regular expression depending on the format of the completion
+    movie_details = re.findall(
+        r"Movie: (.*)\nYear: (\d+)\nDirector: (.*)\nDescription: (.*)\nGenre: (.*)", completion)
+
+    # Create a new list of movies that includes all movies except the one being deleted
+    updated_movie_list = [
+        f"Movie: {movie[0]}\nYear: {movie[1]}\nDirector: {movie[2]}\nDescription: {movie[3]}" for movie in movie_details if movie[0] != movie_name]
+
+    try:
+        # Write the updated movie list to the movie-log.txt file
         with open("movie-log.txt", "w") as movie_log_file:
-            for movie in movie_list:
-                if movie != movie_details:
-                    movie_log_file.write(f"{movie}\n")
+            for movie in updated_movie_list:
+                movie_log_file.write(f"{movie}\n")
     except FileNotFoundError:
         return "movie-log.txt file not found"
 
+# This function is used to update a movie in the logger (by overwriting the movie-log.txt file)
+
+def update_movie(movie_name, new_movie_name=None, new_year=None, new_director=None, new_description=None):
+    # Read the movie-log.txt file into a list of lines
+    try:
+        with open("movie-log.txt", "r") as movie_log_file:
+            lines = movie_log_file.readlines()
+    except FileNotFoundError:
+        return "movie-log.txt file not found"
+    except Exception as e:
+        return f"An error occurred: {e}"
+
+    # Iterate through the lines and find the movie to update
+    for i, line in enumerate(lines):
+        if movie_name in line:
+            # Split the line into movie details
+            movie_details = line.split("\n")
+            # Update the movie details
+            if new_movie_name is not None:
+                movie_details[0] = f"Movie: {new_movie_name}"
+            if new_year is not None:
+                movie_details[1] = f"Year: {new_year}"
+            if new_director is not None:
+                movie_details[2] = f"Director: {new_director}"
+            if new_description is not None:
+                movie_details[3] = f"Description: {new_description}"
+            # Join the movie details back into a single line
+            lines[i] = "\n".join(movie_details)
+            break
+    else:
+        return "Movie not found"
+
+    # Write the updated lines back to the movie-log.txt file
+    try:
+        with open("movie-log.txt", "w") as movie_log_file:
+            movie_log_file.writelines(lines)
+    except Exception as e:
+        return f"An error occurred: {e}"
+
+
+
 # This function is used to handle errors
+
 
 def handle_error(error):
     try:
@@ -99,98 +224,123 @@ debug_guild = int(os.getenv("DEBUG_GUILD"))
 debug_channel = int(os.getenv("DEBUG_CHANNEL"))
 
 # Define the on_ready event handler
+
+
 @bot.event
 async def on_ready():
     print("Bot is up and running...")
-    print("Bot is ready to use!")
+    # Set the bot's status
+    await bot.change_presence(activity=discord.Game(name="/help for commands"))
 
-# Define the /add command using the command decorator
+# Define the >help command
 
-@bot.command(
-    name="add",
-    description="Adds a movie to the movie log",
-    scope=debug_guild,
-)
 
-async def add(ctx: interactions.CommandContext, movie_details: str):
-    # Use the Davinci-003 model to parse the natural language input and extract the movie details
+@bot.command(name="help")
+async def help(ctx):
+    await ctx.send(
+        "List of available commands:\n"
+        ">help - Shows this message\n"
+        ">movies - Shows the list of movies in the logger\n"
+        ">search <query> - Searches for movies in the logger based on the given query\n"
+        ">add <movie_details> - Adds a movie to the logger\n"
+        ">delete <movie_name> - Deletes a movie from the logger\n"
+        ">update <movie_name> <new_movie_name> <new_year> <new_director> <new_description> - Updates the movie details of the movie with the given name in the logger. Any field that you do not want to update can be left blank. Example: >update 'The Shawshank Redemption' 'The Shawshank Redemption' 1994 'Frank Darabont' 'Two imprisoned men bond over a number of years, finding solace and eventual redemption through acts of common decency.' "
+    )
+
+
+# Define the >movies command
+
+
+@bot.command(name="movies")
+async def movies(ctx):
     try:
-        response = openai.Completion.create(
-            engine="davinci-003",
-            prompt=f"/add {movie_details}",
-            max_tokens=1024,
-            temperature=0.5,
-        )
-    except Exception as e:
-        # Handle any errors that occurred
-        await ctx.send(handle_error(e))
+        movie_list = get_movie_list()
+    except FileNotFoundError:
+        await ctx.send("movie-log.txt file not found")
     else:
-        # Add the movie to the logger
-        result = add_movie(response.text.strip())
-        if result:
-            await ctx.send(result)
+        await ctx.send(f"List of movies:\n{movie_list}")
 
-# Define the /delete command using the command decorator
+# Define the >search command
 
-@bot.command(
-    name="delete",
-    description="Deletes a movie from the movie log",
-    scope=debug_guild,
-)
 
-async def delete(ctx: interactions.CommandContext, movie_details: str):
-    # Use the Davinci-003 model to parse the natural language input and extract the movie details
+@bot.command(name="search")
+async def search(ctx, *, query):
     try:
-        response = openai.Completion.create(
-            engine="davinci-003",
-            prompt=f"/delete {movie_details}",
-            max_tokens=1024,
-            temperature=0.5,
-        )
-    except Exception as e:
-        # Handle any errors that occurred
-        await ctx.send(handle_error(e))
+        search_results = search_movies(query)
+    except FileNotFoundError:
+        await ctx.send("movie-log.txt file not found")
     else:
-        # Delete the movie from the logger
-        result = delete_movie(response.text.strip())
-        if result:
-            await ctx.send(result)
+        if search_results == "No results found":
+            await ctx.send("No results found")
+        else:
+            await ctx.send(f"Search results:\n{search_results}")
 
-# Define the /search command using the command decorator
+# Define the >add command
 
-@bot.command(
-    name="search",
-    description="Searches for movies in the movie log",
-    scope=debug_guild,
-)
 
-async def search(ctx: interactions.CommandContext, query: str):
-    # Search for movies in the logger
-    result = search_movies(query)
-    if result:
-        await ctx.send(result)
+@bot.command(name="add")
+async def add(ctx, *, movie_details):
+    if not movie_details:
+        await ctx.send("No movie details provided")
+    else:
+        try:
+            add_movie(movie_details)
+        except FileNotFoundError:
+            await ctx.send("movie-log.txt file not found")
+        else:
+            await ctx.send(f"Added movie: {movie_details}")
 
-# Define the /list command using the command decorator
+# Define the >delete command
 
-@bot.command(
-    name="list",
-    description="Lists all movies in the movie log",
-    scope=debug_guild,
-)
-async def list(ctx: interactions.CommandContext):
-    # Get the list of movies from the logger
-    result = get_movie_list()
-    if result:
-        await ctx.send(result)
+
+@bot.command(name="delete")
+async def delete(ctx, *, movie_details):
+    if not movie_details:
+        await ctx.send("No movie details provided")
+    else:
+        try:
+            delete_movie_status = delete_movie(movie_details)
+        except FileNotFoundError:
+            await ctx.send("movie-log.txt file not found")
+        else:
+            if delete_movie_status == "Movie not found":
+                await ctx.send("Movie not found")
+            else:
+                await ctx.send(f"Deleted movie: {movie_details}")
+
+# Define the >update command
+
+
+@bot.command()
+async def update(ctx, movie_name: str, *, update_str: str):
+    try:
+        # Parse the update string to get the new movie details
+        updates = {}
+        for update in update_str.split(", "):
+            key, value = update.split(": ")
+            updates[key.lower()] = value
+
+        # Call the update_movie() function
+        result = update_movie(movie_name, **updates)
+    except Exception as e:
+        # Catch any errors that might occur and log them
+        import logging
+        logging.exception(e)
+        await ctx.send("An error occurred while updating the movie")
+    else:
+        if result == "Movie not found":
+            await ctx.send("Movie not found")
+        else:
+            await ctx.send("Movie updated successfully")
+
 
 
 # Handle command errors using the on_command_error event
 @bot.event
-async def command_error(ctx, error):
+async def on_command_error(ctx, error):
     # Send an error message if a CommandNotFound error occurred
-    if isinstance(error, interactions.CommandNotFound):
-        await ctx.send("Command not found")
+    if isinstance(error, commands.CommandNotFound):
+        await ctx.send("Invalid command")
 
-
-# Run the bot
-bot.start()
+# Run the using the bot token
+bot.run(os.getenv("DISCORD_BOT_TOKEN"))
