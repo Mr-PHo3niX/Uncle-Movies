@@ -6,6 +6,8 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 import asyncio
+import json
+import uuid
 
 # Load environment variables from .env file
 try:
@@ -27,76 +29,95 @@ bot = commands.Bot(command_prefix=">", intents=discord.Intents.all())
 
 
 def get_movie_list():
-    movie_list = []
     try:
-        with open("movie-log.txt", "r") as movie_log_file:
-            for line in movie_log_file:
-                movie_list.append(line.strip())
+        with open("movies.json", "r") as json_file:
+            data = json.load(json_file)
     except FileNotFoundError:
-        return "movie-log.txt file not found"
+        return "movies.json file not found"
     else:
+        movie_list = []
+        for i, movie in enumerate(data["movies"]):
+            movie_list.append(
+                f"{i+1}. {movie['movie_name']} (UID: {movie['id']})")
         return "\n".join(movie_list)
+
 
 # This function is used to search for movies in the logger (by searching the movie-log.txt file)
 
 
-def search_movies(query, search_by="title"):
+def search_movies(query, search_by="movie_name"):
+    # Initialize an empty list to store search results
     search_results = []
+    # Check if the query is an empty string
     if not query:
         return "The query cannot be an empty string."
 
+    # Check if the search criteria is an empty string
     if not search_by:
         return "The search criteria cannot be an empty string."
 
-    if search_by not in ["title", "year", "director", "description", "genre"]:
-        return "Invalid search criteria. Please choose from 'title', 'year', 'director', 'description', or 'genre'."
-    
+    # Check if the search criteria is valid
+    if search_by not in ["movie_name", "year", "director", "description", "genre"]:
+        return "Invalid search criteria. Please choose from 'movie_name', 'year', 'director', 'description', or 'genre'."
+
     try:
-        with open("movie-log.txt", "r") as movie_log_file:
-            for line in movie_log_file:
-                if search_by == "title":
-                    movie_title = line.split("\n")[0].split(": ")[1]
-                    if query.lower() in movie_title.lower():
-                        search_results.append(line.strip())
-                # You can add more elif statements here to search by other criteria (e.g. year, director)
-                elif search_by == "year":
-                    movie_year = line.split("\n")[1].split(": ")[1]
-                    if query.lower() in movie_year.lower():
-                        search_results.append(line.strip())
-                elif search_by == "director":
-                    movie_director = line.split("\n")[2].split(": ")[1]
-                    if query.lower() in movie_director.lower():
-                        search_results.append(line.strip())
-                elif search_by == "description":
-                    movie_description = line.split("\n")[3].split(": ")[1]
-                    if query.lower() in movie_description.lower():
-                        search_results.append(line.strip())
-                elif search_by == "genre":
-                    movie_genre = line.split("\n")[4].split(": ")[1]
-                    if query.lower() in movie_genre.lower():
-                        search_results.append(line.strip())
+        # Open the json file in read mode
+        with open("movies.json", "r") as json_file:
+            # Load the data from the json file
+            data = json.load(json_file)
     except FileNotFoundError:
-        return "movie-log.txt file not found"
+        return "movies.json file not found"
     else:
-        if not search_results:
-            return "No results found"
-        return "\n".join(search_results)
+        # Iterate over each movie in the json data
+        for movie in data["movies"]:
+            # Check if the query matches the movie's title
+            if search_by == "movie_name":
+                if query.lower() in movie["movie_name"].lower():
+                    search_results.append(f"{movie['movie_name']} (UID: {movie['id']})")
+            # Check if the query matches the movie's year
+            elif search_by == "year":
+                if query.lower() in movie["year"].lower():
+                    search_results.append(
+                        f"{movie['movie_name']} - {movie['year']}")
+            # Check if the query matches the movie's director
+            elif search_by == "director":
+                if query.lower() in movie["director"].lower():
+                    search_results.append(
+                        f"{movie['movie_name']} - {movie['director']}")
+            # Check if the query matches the movie's description
+            elif search_by == "description":
+                if query.lower() in movie["description"].lower():
+                    search_results.append(
+                        f"{movie['movie_name']} - {movie['description']}")
+            # Check if the query matches the movie's genre
+            elif search_by == "genre":
+                if query.lower() in movie["genre"].lower():
+                    search_results.append(
+                        f"{movie['movie_name']} - {movie['genre']}")
+
+    # if no movies are found, return "No movies found"
+    if not search_results:
+        return "No movies found"
+    # otherwise, return the search results
+    return search_results
 
 # This function is used to add a movie to the logger (by appending to the movie-log.txt file)
 
 
 def add_movie(movie_name):
-    
     # Check if the movie name is empty
     if not movie_name:
         return "The movie name cannot be an empty string."
-    
     # Check if the movie already exists in the logger
-    if movie_name in search_movies(movie_name):
-        return
+    search_results = search_movies(movie_name)
+    # If the movie already exists, return "Movie already exists"
+    if len(search_results) > 0:
+        return "'{movie_name}' already exists in the logger."
+
 
     # Set the prompt
-    prompt = f"Information about the movie {movie_name}"
+    prompt = (f"Information about the movie {movie_name}\n"
+              "Include the movie name, year, director, short description, and genre.")
 
     # Set the model to use for completion
     model = "text-davinci-003"
@@ -110,166 +131,186 @@ def add_movie(movie_name):
     try:
         # Generate completions
         completions = openai.Completion.create(
-            engine=model, prompt=prompt, max_tokens=2048, n=num_completions, temperature=temperature)
-    except openai.api_error.ApiError as e:
-        # Code to handle any errors that might occur when using the OpenAI API
-        return "An error occurred when calling the OpenAI API: {}".format(e)
-    except Exception as e:
-        # Code to handle any other exceptions that might occur
-        return "An unexpected error occurred: {}".format(e)
+            engine=model, prompt=prompt, max_tokens=2048, n=num_completions, temperature=temperature, format="text"
+        )
+    except openai.error.Timeout as e:
+        # Handle timeout error, e.g. retry or log
+        print(f"OpenAI API request timed out: {e}")
+        pass
+    except openai.error.APIError as e:
+        # Handle API error, e.g. retry or log
+        print(f"OpenAI API returned an API Error: {e}")
+        pass
+    except openai.error.APIConnectionError as e:
+        # Handle connection error, e.g. check network or log
+        print(f"OpenAI API request failed to connect: {e}")
+        pass
+    except openai.error.InvalidRequestError as e:
+        # Handle invalid request error, e.g. validate parameters or log
+        print(f"OpenAI API request was invalid: {e}")
+        pass
+    except openai.error.AuthenticationError as e:
+        # Handle authentication error, e.g. check credentials or log
+        print(f"OpenAI API request was not authorized: {e}")
+        pass
+    except openai.error.PermissionError as e:
+        #Handle permission error, e.g. check scope or log
+        print(f"OpenAI API request was not permitted: {e}")
+        pass
+    except openai.error.RateLimitError as e:
+        #Handle rate limit error, e.g. wait or log
+        print(f"OpenAI API request exceeded rate limit: {e}")
+        pass
+
 
     # Get the first completion
     completion = completions.choices[0].text
 
-    # Extract the information about the movie from the completion
-    # You may need to modify the regular expression depending on the format of the completion
-    try:
-        movie_details = re.search(
-            r"Movie: (.*)\nYear: (\d+)\nDirector: (.*)\nDescription: (.*)\nGenre: (.*)", completion).groups()
-    except AttributeError:
-        # Code to handle the AttributeError exception
-        return "Unexpected format for completion returned by the OpenAI API"
+    print(completion)
+    
+    # Extract the movie name, year, director, description, and genre from the completion
+    movie_name = re.search("Movie Name:(.*)", completion).group(1).strip()
+    year = re.search("Year:(.*)", completion).group(1).strip()
+    director = re.search("Director:(.*)", completion).group(1).strip()
+    description = re.search(
+        "Description:(.*)", completion, re.DOTALL).group(1).strip()
+    genre_matches = re.finditer("Genre:(.*?)\n", completion, re.DOTALL)
+    genres = []
+    for match in genre_matches:
+        genres.append(match.group(1).strip())
+    genre = ', '.join(genres)
 
-    # Format the movie details
-    movie_details = f"Movie: {movie_details[0]}\nYear: {movie_details[1]}\nDirector: {movie_details[2]}\nDescription: {movie_details[3]}\nGenre: {movie_details[4]}\n"
+    # Create a new movie object
+    movie = {
+        "id": uuid.uuid4().hex,
+        "movie_name": movie_name,
+        "year": year,
+        "director": director,
+        "description": description,
+        "genre": genre
+    }
 
     try:
-        # Code to write to the movie-log.txt file
-        with open("movie-log.txt", "a") as movie_log_file:
-            movie_log_file.write(f"{movie_details}\n")
+        # open the json file in read mode
+        with open("movies.json", "r") as json_file:
+            # load the data from the json file
+            data = json.load(json_file)
+    # if the json file does not exist
     except FileNotFoundError:
-        # Code to handle the FileNotFoundError exception
-        return "movie-log.txt file not found"
+        # create an empty json file with an empty array of movies
+        data = {"movies": []}
+        # open the json file in write mode
+        with open("movies.json", "w") as json_file:
+            # write the empty data to the json file
+            json.dump(data, json_file)
+    # if the json file exists
+    else:
+        # append the new movie to the array of movies
+        data["movies"].append(movie)
+        # open the json file in write mode
+        with open("movies.json", "w") as json_file:
+            # write the updated data to the json file
+            json.dump(data, json_file)
+
+    # Print a message to confirm that the movie was added
+    print(f"Movie '{movie_name}' was added to the database.")
 
 
 # This function is used to delete a movie from the logger (by overwriting the movie-log.txt file)
 
 
-def delete_movie(movie_name):
-    # Get the list of movies
-    movie_list = get_movie_list()
-    
-    # Check if the movie name is empty
-    if not movie_name:
-        return "The movie name cannot be an empty string."
-    
-    # Check if the movie exists in the list
-    if movie_name  not in movie_list:
-        return "Movie not found"
-
-
-    # Set the prompt
-    prompt = f"Information about movies in the logger except the movie {movie_name}"
-
-    # Set the model to use for completion
-    model = "text-davinci-003"
-
-    # Set the number of completions to generate
-    num_completions = 1
-
-    # Set the temperature (controls the creativity of the completions)
-    temperature = 0.5
-
+def delete_movie(movie_name_or_ID):
+    # Open the movies.json file in read mode
     try:
-        # Generate completions
-        completions = openai.Completion.create(
-            engine=model, prompt=prompt, max_tokens=2048, n=num_completions, temperature=temperature)
-    except openai.api_error.ApiError as e:
-        # Code to handle any errors that might occur when using the OpenAI API
-        return "An error occurred when calling the OpenAI API: {}".format(e)
-
-    # Get the first completion
-    completion = completions.choices[0].text
-
-    # Extract the information about the movies from the completion
-    # You may need to modify the regular expression depending on the format of the completion
-    try:
-        movie_details = re.findall(
-            r"Movie: (.*)\nYear: (\d+)\nDirector: (.*)\nDescription: (.*)\nGenre: (.*)", completion)
-    except AttributeError:
-        return "Unexpected format for completion returned by the OpenAI API"
-
-    # Create a new list of movies that includes all movies except the one being deleted
-    updated_movie_list = [
-        f"Movie: {movie[0]}\nYear: {movie[1]}\nDirector: {movie[2]}\nDescription: {movie[3]}\nGenre: {movie[4]}\n" for movie in movie_details if movie[0] != movie_name]
-
-    try:
-        # Write the updated movie list to the movie-log.txt file
-        with open("movie-log.txt", "w") as movie_log_file:
-            for movie in updated_movie_list:
-                movie_log_file.write(f"{movie}\n")
+        with open("movies.json", "r") as movie_log_file:
+            movie_data = json.load(movie_log_file)
     except FileNotFoundError:
-        return "movie-log.txt file not found"
+        return "movies.json file not found"
+    except json.decoder.JSONDecodeError as e:
+        return f"Error reading json file: {e}"
 
-# This function is used to update a movie in the logger (by overwriting the movie-log.txt file)
+    # Check if the movie name or ID is empty
+    if not movie_name_or_ID:
+        return "The movie name or ID cannot be an empty string."
 
-def update_movie(movie_name, new_movie_name=None, new_year=None, new_director=None, new_description=None, new_genre=None):
-    # Read the movie-log.txt file into a list of lines
-    try:
-        with open("movie-log.txt", "r") as movie_log_file:
-            lines = movie_log_file.readlines()
-    except FileNotFoundError:
-        return "movie-log.txt file not found"
-    except Exception as e:
-        return f"An error occurred: {e}"
-
-    # Iterate through the lines and find the movie to update
-    for i, line in enumerate(lines):
-        if movie_name in line:
-            # Split the line into movie details
-            movie_details = line.split("\n")
-            # Update the movie details
-            if new_movie_name is not None:
-                movie_details[0] = f"Movie: {new_movie_name}"
-            if new_year is not None:
-                movie_details[1] = f"Year: {new_year}"
-            if new_director is not None:
-                movie_details[2] = f"Director: {new_director}"
-            if new_description is not None:
-                movie_details[3] = f"Description: {new_description}"
-            if new_genre is not None:
-                movie_details[4] = f"Genre: {new_genre}"
-            # Join the movie details back into a single line
-            lines[i] = "\n".join(movie_details)
+    # Find the movie to delete
+    movie_to_delete = None
+    for movie in movie_data:
+        if movie_name_or_ID in (movie["movie_name"], movie["uniqueID"]):
+            movie_to_delete = movie
             break
     else:
         return "Movie not found"
 
-    # Write the updated lines back to the movie-log.txt file
+    # Remove the movie from the movie_data list
+    movie_data.remove(movie_to_delete)
+    # Open the movies.json file in write mode and write the updated movie_data list
     try:
-        with open("movie-log.txt", "w") as movie_log_file:
-            movie_log_file.writelines(lines)
+        with open("movies.json", "w") as movie_log_file:
+            json.dump(movie_data, movie_log_file)
     except Exception as e:
         return f"An error occurred: {e}"
-    
+
+
+# This function is used to update a movie in the logger (by overwriting the movie-log.txt file)
+
+
+def update_movie(movie_name, field_to_update, new_value):
+    try:
+        # Open the json file in read mode
+        with open("movies.json", "r") as json_file:
+            # Load the data from the json file
+            data = json.load(json_file)
+    except FileNotFoundError:
+        return "movies.json file not found"
+    else:
+        # Iterate over each movie in the json data
+        for movie in data["movies"]:
+            if movie["movie_name"].lower() == movie_name.lower():
+                movie[field_to_update] = new_value
+                break
+        else:
+            return f"Movie with name '{movie_name}' not found."
+    # Open the json file in write mode
+    with open("movies.json", "w") as json_file:
+        # Write the updated data to the json file
+        json.dump(data, json_file)
+    return f"{field_to_update} of movie '{movie_name}' is updated to '{new_value}'"
+
+
+
+# This function is used to sort the movies in the logger based on the specified criteria
+
 
 def sort_movies(sort_by):
-    # Read the movies from the movie-log.txt file and store them in a list
-    movies = []
-    with open("movie-log.txt", "r") as movie_log_file:
-        for line in movie_log_file:
-            movies.append(line.strip())
+    # Read the movies from the json file and store them in a list
+    try:
+        with open("movies.json", "r") as json_file:
+            data = json.load(json_file)
+            movies = data["movies"]
+    except FileNotFoundError:
+        return "movies.json file not found"
+    except Exception as e:
+        return f"An error occurred: {e}"
 
     # Sort the list of movies based on the specified criteria
-    if sort_by == "title":
-        sorted_movies = sorted(
-            movies, key=lambda movie: movie.split("\n")[0].split(": ")[1])
+    if sort_by == "movie_name":
+        sorted_movies = sorted(movies, key=lambda movie: movie["movie_name"])
+        sorted_movies = [
+            f"{movie['movie_name']} (UID: {movie['id']})" for movie in sorted_movies]
     elif sort_by == "year":
-        sorted_movies = sorted(
-            movies, key=lambda movie: movie.split("\n")[1].split(": ")[1])
-    elif sort_by == "director":
-        sorted_movies = sorted(
-            movies, key=lambda movie: movie.split("\n")[2].split(": ")[1])
-    elif sort_by == "description":
-        sorted_movies = sorted(
-            movies, key=lambda movie: movie.split("\n")[3].split(": ")[1])
+        sorted_movies = sorted(movies, key=lambda movie: movie["year"])
+        sorted_movies = ["-".join([movie["movie_name"], movie["year"]])
+                         for movie in sorted_movies]
     elif sort_by == "genre":
-        sorted_movies = sorted(
-            movies, key=lambda movie: movie.split("\n")[4].split(": ")[1])
+        sorted_movies = sorted(movies, key=lambda movie: movie["genre"])
+        sorted_movies = ["-".join([movie["movie_name"], movie["genre"]])
+                         for movie in sorted_movies]
     else:
-        return "Invalid criteria. Specify a valid criteria (title, year, director, description, or genre)"
+        return "Invalid criteria. Please choose from 'movie_name', 'year', or 'genre'."
 
     return "\n".join(sorted_movies)
+
 
 
 
@@ -297,47 +338,39 @@ async def on_ready():
     # Set the bot's status
     await bot.change_presence(activity=discord.Game(name="/help for commands"))
 
-# Define the >help command
-
-
-@bot.app_commands(name="help")
-async def help(ctx):
-    await ctx.send(
-        "```List of available commands:\n>help - Shows this message\n>movies - Shows the list of movies in the logger\n>search <query> [search_by] - Searches for movies in the logger based on the given query and search criteria. The search criteria can be 'title', 'year', 'director', 'description', or 'genre'. If no search criteria is provided, the default is 'title'.\n>add <movie_name> - Adds a movie to the logger\n>delete <movie_name> - Deletes a movie from the logger\n>update <movie_name> <new_movie_name> <new_year> <new_director> <new_description> <new_genre> - Updates the movie details of the movie with the given name in the logger. Any field that you do not want to update can be left blank. \nExample: >update 'The Shawshank Redemption' 'The Shawshank Redemption' 1994 'Frank Darabont' 'Two imprisoned men bond over a number of years, finding solace and eventual redemption through acts of common decency.' 'Comedy'\n>sort <criteria> - Sorts the list of movies in the logger based on the given criteria. The criteria can be 'title', 'year', 'director', 'description', or 'genre'.\n```"
-)
-
 
 # Define the >movies command
 
 
-@app_commands.command(name="movies")
+@bot.command(name="movies")
 async def movies(ctx):
     try:
         movie_list = get_movie_list()
     except FileNotFoundError:
-        await ctx.send("movie-log.txt file not found")
+        await ctx.send("movies.json file not found")
     else:
         await ctx.send(f"List of movies:\n{movie_list}")
 
 # Define the >search command
 
 
-@app_commands.command(name="search")
+@bot.command(name="search")
 async def search(ctx, *, query):
     try:
         search_results = search_movies(query)
     except FileNotFoundError:
-        await ctx.send("movie-log.txt file not found")
+        await ctx.send("movies.json file not found")
     else:
-        if search_results == "No results found":
-            await ctx.send("No results found")
+        if search_results == "No movies found":
+            await ctx.send("No movies found")
         else:
             await ctx.send(f"Search results:\n{search_results}")
+
 
 # Define the >add command
 
 
-@app_commands.command(name="add")
+@bot.command(name="add")
 async def add(ctx, *, movie_details):
     if not movie_details:
         await ctx.send("No movie details provided")
@@ -345,32 +378,32 @@ async def add(ctx, *, movie_details):
         try:
             add_movie(movie_details)
         except FileNotFoundError:
-            await ctx.send("movie-log.txt file not found")
+            await ctx.send("movies.json file not found")
         else:
             await ctx.send(f"Added movie: {movie_details}")
 
 # Define the >delete command
 
 
-@app_commands.command(name="delete")
-async def delete(ctx, *, movie_details):
-    if not movie_details:
-        await ctx.send("No movie details provided")
+@bot.command(name="delete")
+async def delete(ctx, *, movie_name):
+    if not movie_name:
+        await ctx.send("No movie name provided")
     else:
         try:
-            delete_movie_status = delete_movie(movie_details)
+            delete_movie_status = delete_movie(movie_name)
         except FileNotFoundError:
-            await ctx.send("movie-log.txt file not found")
+            await ctx.send("movies.json file not found")
         else:
             if delete_movie_status == "Movie not found":
                 await ctx.send("Movie not found")
             else:
-                await ctx.send(f"Deleted movie: {movie_details}")
+                await ctx.send(f"Deleted movie: {movie_name}")
 
 # Define the >update command
 
 
-@app_commands.command(name="update")
+@bot.command(name="update")
 async def update(ctx, movie_name: str, *, update_str: str):
     try:
         # Parse the update string to get the new movie details
@@ -381,6 +414,8 @@ async def update(ctx, movie_name: str, *, update_str: str):
 
         # Call the update_movie() function
         result = update_movie(movie_name, **updates)
+    except FileNotFoundError:
+        await ctx.send("movies.json file not found")
     except Exception as e:
         # Catch any errors that might occur and log them
         import logging
@@ -391,20 +426,23 @@ async def update(ctx, movie_name: str, *, update_str: str):
             await ctx.send("Movie not found")
         else:
             await ctx.send("Movie updated successfully")
+
             
 # Define the >sort command
 
-
-@app_commands.command(name="sort")
+# change to use json!!!
+@bot.command(name="sort")
 async def sort(ctx, sort_by: str):
     # Validate the sort criteria
-    if sort_by not in ["title", "year", "director", "genre"]:
-        await ctx.send("Invalid sort criteria. Please choose from 'title', 'year', 'director' or 'genre'")
+    if sort_by not in ["movie_name", "year", "genre"]:
+        await ctx.send("Invalid sort criteria. Please choose from 'movie_name', 'year', or 'genre'")
         return
 
     # Call the sort_movies function
     try:
         sorted_movies = sort_movies(sort_by)
+    except FileNotFoundError:
+        await ctx.send("movies.json file not found")
     except Exception as e:
         await ctx.send("An error occurred while sorting the movies: {}".format(e))
         return
@@ -412,6 +450,7 @@ async def sort(ctx, sort_by: str):
     # Send the sorted movie list to the channel
     message = "\n".join(sorted_movies)
     await ctx.send(message)
+
 
 
 
