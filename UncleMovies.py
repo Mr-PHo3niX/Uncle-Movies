@@ -66,14 +66,14 @@ def search_movies(query, search_by="movie_name"):
             # Load the data from the json file
             data = json.load(json_file)
     except FileNotFoundError:
-        return "movies.json file not found"
+        return []
     else:
         # Iterate over each movie in the json data
         for movie in data["movies"]:
             # Check if the query matches the movie's title
             if search_by == "movie_name":
                 if query.lower() in movie["movie_name"].lower():
-                    search_results.append(f"{movie['movie_name']} (UID: {movie['id']})")
+                    search_results.append(f"{movie['movie_name']}(UID: {movie['id']})")
             # Check if the query matches the movie's year
             elif search_by == "year":
                 if query.lower() in movie["year"].lower():
@@ -109,10 +109,8 @@ def add_movie(movie_name):
     if not movie_name:
         return "The movie name cannot be an empty string."
     # Check if the movie already exists in the logger
-    search_results = search_movies(movie_name)
-    # If the movie already exists, return "Movie already exists"
-    if len(search_results) > 0:
-        return "'{movie_name}' already exists in the logger."
+    if movie_name in get_movie_list():
+        return "The movie already exists in the logger."
 
 
     # Set the prompt
@@ -174,11 +172,9 @@ def add_movie(movie_name):
     director = re.search("Director:(.*)", completion).group(1).strip()
     description = re.search(
         "Description:(.*)", completion, re.DOTALL).group(1).strip()
-    genre_matches = re.finditer("Genre:(.*?)\n", completion, re.DOTALL)
-    genres = []
-    for match in genre_matches:
-        genres.append(match.group(1).strip())
-    genre = ', '.join(genres)
+    genre_list = re.search("Genre:(.*)", completion).group(1).strip()
+    genre = genre_list.split(", ")
+    
 
     # Create a new movie object
     movie = {
@@ -190,27 +186,17 @@ def add_movie(movie_name):
         "genre": genre
     }
 
-    try:
-        # open the json file in read mode
-        with open("movies.json", "r") as json_file:
-            # load the data from the json file
-            data = json.load(json_file)
-    # if the json file does not exist
-    except FileNotFoundError:
-        # create an empty json file with an empty array of movies
-        data = {"movies": []}
-        # open the json file in write mode
-        with open("movies.json", "w") as json_file:
-            # write the empty data to the json file
-            json.dump(data, json_file)
-    # if the json file exists
-    else:
-        # append the new movie to the array of movies
-        data["movies"].append(movie)
-        # open the json file in write mode
-        with open("movies.json", "w") as json_file:
-            # write the updated data to the json file
-            json.dump(data, json_file)
+    # open the json file in read mode
+    with open("movies.json", "r") as json_file:
+        # load the data from the json file
+        data = json.load(json_file)
+    # append the new movie to the array of movies
+    data["movies"].append(movie)
+    # open the json file in write mode
+    with open("movies.json", "w") as json_file:
+        # write the updated data to the json file
+        json.dump(data, json_file)
+
 
     # Print a message to confirm that the movie was added
     print(f"Movie '{movie_name}' was added to the database.")
@@ -374,13 +360,18 @@ async def search(ctx, *, query):
 async def add(ctx, *, movie_details):
     if not movie_details:
         await ctx.send("No movie details provided")
+        
+    # if movies.json exists
+    if os.path.exists("movies.json"):
+        add_movie_status = add_movie(movie_details)
+    # if movies.json does not exist, create it and add the movie
     else:
-        try:
-            add_movie(movie_details)
-        except FileNotFoundError:
-            await ctx.send("movies.json file not found")
-        else:
-            await ctx.send(f"Added movie: {movie_details}")
+        with open("movies.json", "w") as json_file:
+            json.dump({"movies": []}, json_file)
+        add_movie_status = add_movie(movie_details)
+        
+    await ctx.send(f"{add_movie_status}")
+    
 
 # Define the >delete command
 
